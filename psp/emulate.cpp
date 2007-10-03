@@ -24,6 +24,7 @@ static PspFpsCounter Counter;
 PspImage *Screen = NULL;
 
 static UBYTE* DisplayCallback(ULONG objref);
+void AudioCallback(void* buf, unsigned int *length, void *userdata);
 
 /* Initialize emulation */
 int InitEmulation()
@@ -95,6 +96,9 @@ void RunEmulation()
 
 	pspPerfInitFps(&Counter);
 
+  /* Resume sound */
+  pspAudioSetChannelCallback(0, AudioCallback, 0);
+
 	while (!ExitPSP)
 	{
 		for (ULONG loop=1024; loop; loop--)
@@ -134,5 +138,25 @@ void RunEmulation()
 
 		LynxSystem->SetButtonData(buttons);
 	}
+
+  /* Stop sound */
+  pspAudioSetChannelCallback(0, NULL, 0);
 }
 
+void AudioCallback(void* buf, unsigned int *length, void *userdata)
+{
+  PspSample *OutBuf = (PspSample*)buf;
+  u8 *InBuf = (u8*)(&gAudioBuffer);
+  u32 sample;
+
+  for (uint i = 0; i < *length; i++)
+  {
+      sample = (u32)InBuf[i] << 8;
+      sample = (sample > 32768) ? 32768 : (sample < -32767) ? -32767 : sample;
+
+      OutBuf[i].Left = (u16)sample;
+      OutBuf[i].Right = (u16)sample;
+  }
+
+  gAudioBufferPointer = 0;
+}
