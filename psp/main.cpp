@@ -12,7 +12,7 @@
 #include "psp/menu.h"
 
 PSP_MODULE_INFO(PSP_APP_NAME, 0, 1, 1);
-PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER);
+PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
 
 static void ExitCallback(void* arg)
 {
@@ -23,7 +23,7 @@ int main(int argc, char **argv)
 {
   /* Initialize PSP */
   pspInit(argv[0]);
-  pspAudioInit(1024);
+  pspAudioInit(4096);
   pspCtrlInit();
   pspVideoInit();
 

@@ -35,6 +35,7 @@ typedef struct {
 static int DirectHandle;
 static ChannelInfo AudioStatus[AUDIO_CHANNELS];
 static short *AudioBuffer[AUDIO_CHANNELS][2];
+static unsigned int AudioBufferSamples[AUDIO_CHANNELS][2];
 
 static int AudioChannelThread(int args, void *argp);
 static void FreeBuffers();
@@ -49,6 +50,10 @@ int pspAudioInit(int sample_count)
   AudioReady = 0;
   DirectHandle = -1;
 
+  /* Check sample count */
+  if (sample_count < 0) sample_count = DEFAULT_SAMPLE_COUNT;
+  sample_count = PSP_AUDIO_SAMPLE_ALIGN(sample_count);
+
   for (i = 0; i < AUDIO_CHANNELS; i++)
   {
     AudioStatus[i].Handle = -1;
@@ -59,7 +64,10 @@ int pspAudioInit(int sample_count)
     AudioStatus[i].Userdata = NULL;
 
     for (j = 0; j < 2; j++)
+    {
       AudioBuffer[i][j] = NULL;
+      AudioBufferSamples[i][j] = 0;
+    }
   }
 
   DirectHandle = sceAudioChReserve(PSP_AUDIO_NEXT_CHANNEL, 
@@ -69,10 +77,7 @@ int pspAudioInit(int sample_count)
   if ((SampleCount = sample_count) == 0)
     return 1;
 
-  /* Check sample count */
-  if ((SampleCount = sample_count) < 0)
-    SampleCount = DEFAULT_SAMPLE_COUNT;
-  SampleCount = PSP_AUDIO_SAMPLE_ALIGN(SampleCount);
+  SampleCount = sample_count;
 
   /* Initialize buffers */
   for (i = 0; i < AUDIO_CHANNELS; i++)
@@ -84,6 +89,8 @@ int pspAudioInit(int sample_count)
         FreeBuffers();
         return 0;
       }
+
+      AudioBufferSamples[i][j] = SampleCount;
     }
   }
 
@@ -216,8 +223,9 @@ static int AudioChannelThread(int args, void *argp)
   volatile int bufidx = 0;
   int channel = *(int*)argp;
   int i;
-  unsigned int *ptr, length;
+  unsigned int *ptr;
   void *bufptr;
+  unsigned int *samples;
   pspAudioCallback callback;
 
   for (i = 0; i < 2; i++)
@@ -228,13 +236,13 @@ static int AudioChannelThread(int args, void *argp)
   {
     callback = AudioStatus[channel].Callback;
     bufptr = AudioBuffer[channel][bufidx];
-    length = SampleCount;
+    samples = &(AudioBufferSamples[channel][bufidx]);
 
-    if (callback) callback(bufptr, &length, AudioStatus[channel].Userdata);
-    else for (i = 0, ptr = bufptr; i < SampleCount; i++) *(ptr++) = 0;
+    if (callback) callback(bufptr, samples, AudioStatus[channel].Userdata);
+    else for (i = 0, ptr = bufptr; i < *samples; i++) *(ptr++) = 0;
 
 	  OutputBlocking(channel, AudioStatus[channel].LeftVolume, 
-      AudioStatus[channel].RightVolume, bufptr, length);
+      AudioStatus[channel].RightVolume, bufptr, *samples);
 
     bufidx = (bufidx ? 0 : 1);
   }

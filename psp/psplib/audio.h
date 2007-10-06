@@ -24,7 +24,7 @@ typedef struct
   short Right;
 } PspSample;
 
-typedef void (*pspAudioCallback)(void *buf, unsigned int *length, void *userdata);
+typedef void (*pspAudioCallback)(PspSample *buffer, unsigned int *sample_count, void *userdata);
 
 int  pspAudioInit(int sample_count);
 void pspAudioSetVolume(int channel, int left, int right);

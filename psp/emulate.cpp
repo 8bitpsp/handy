@@ -4,6 +4,7 @@
 
 #include <psptypes.h>
 #include <psprtc.h>
+#include <pspkernel.h>
 
 #include "audio.h"
 #include "video.h"
@@ -24,11 +25,13 @@ static PspFpsCounter Counter;
 PspImage *Screen = NULL;
 
 static UBYTE* DisplayCallback(ULONG objref);
-void AudioCallback(void* buf, unsigned int *length, void *userdata);
+void AudioCallback(PspSample *buffer, unsigned int *samples, void *userdata);
 
 /* Initialize emulation */
 int InitEmulation()
 {
+  gAudioEnabled = TRUE;
+
 	pspPerfInitFps(&Counter);
 
 	if (!(Screen = pspImageCreateVram(256, HANDY_SCREEN_HEIGHT, PSP_IMAGE_16BPP)))
@@ -88,6 +91,9 @@ void TrashEmulation()
 	if (Screen) pspImageDestroy(Screen);
 }
 
+int full_semaid;
+int empty_semaid;
+
 /* Run emulation */
 void RunEmulation()
 {
@@ -96,13 +102,24 @@ void RunEmulation()
 
 	pspPerfInitFps(&Counter);
 
+  empty_semaid = sceKernelCreateSema("bufferEmpty", 0, 1, 1, 0);
+  full_semaid = sceKernelCreateSema("bufferFull", 0, 0, 1, 0);
+
   /* Resume sound */
   pspAudioSetChannelCallback(0, AudioCallback, 0);
-
+pspSetClockFrequency(333);
 	while (!ExitPSP)
 	{
+  sceKernelWaitSema(empty_semaid, 1, 0);
 		for (ULONG loop=1024; loop; loop--)
 			LynxSystem->Update();
+if (gAudioBufferPointer > 256)
+{
+    sceKernelSignalSema(empty_semaid, 0); 
+    sceKernelSignalSema(full_semaid, 1); 
+}
+else
+    sceKernelSignalSema(empty_semaid, 1); 
 
 		buttons = LynxSystem->GetButtonData();
 		
@@ -138,25 +155,58 @@ void RunEmulation()
 
 		LynxSystem->SetButtonData(buttons);
 	}
+pspSetClockFrequency(222);
 
   /* Stop sound */
   pspAudioSetChannelCallback(0, NULL, 0);
 }
 
-void AudioCallback(void* buf, unsigned int *length, void *userdata)
+void AudioCallback(PspSample *OutBuf, unsigned int *length, void *userdata)
 {
-  PspSample *OutBuf = (PspSample*)buf;
-  u8 *InBuf = (u8*)(&gAudioBuffer);
-  u32 sample;
+  int sample, i, j;
+  static u8 leftover[64];
+  static int leftover_pos = 0;
 
-  for (uint i = 0; i < *length; i++)
+  sceKernelWaitSema(full_semaid, 1, 0);
+  sceKernelSignalSema(full_semaid, 0); 
+/*
+  if (leftover_pos + gAudioBufferPointer <= 64)
   {
-      sample = (u32)InBuf[i] << 8;
-      sample = (sample > 32768) ? 32768 : (sample < -32767) ? -32767 : sample;
-
-      OutBuf[i].Left = (u16)sample;
-      OutBuf[i].Right = (u16)sample;
+    for (i = 0; i < *length; i++)
+    {
+      OutBuf->Left = OutBuf->Right = 0;
+      OutBuf++;
+    }
   }
+  else
+  {
+*/
+    *length = PSP_AUDIO_SAMPLE_ALIGN(gAudioBufferPointer + leftover_pos) - 64;
 
-  gAudioBufferPointer = 0;
+    for (i = 0, j = 0; j < leftover_pos; i++, j++)
+    {
+      sample = ((int)leftover[i] << 8) - 32768;
+//      sample = (sample > 32768) ? 32768 : (sample < -32767) ? -32767 : sample;
+
+      OutBuf->Left = OutBuf->Right = (short)sample;
+      OutBuf++;
+    }
+
+    for (i = 0; j < *length; i++, j++)
+    {
+      sample = ((int)gAudioBuffer[i] << 8) - 32768;
+//      sample = (sample > 32768) ? 32768 : (sample < -32767) ? -32767 : sample;
+
+      OutBuf->Left = OutBuf->Right = (short)sample;
+      OutBuf++;
+    }
+
+    for (leftover_pos = 0; i < gAudioBufferPointer; leftover_pos++, i++)
+      leftover[leftover_pos] = gAudioBuffer[i];
+
+    gAudioBufferPointer = 0;
+//  }
+
+  sceKernelSignalSema(empty_semaid, 1); 
 }
+
