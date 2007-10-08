@@ -63,9 +63,12 @@
 
 #include "Machine.h"
 
+#ifndef HANDY_AUDIO_SAMPLE_FREQ
+#define HANDY_AUDIO_SAMPLE_FREQ         22050
+#endif
+
 #define HANDY_SYSTEM_FREQ						16000000
 #define HANDY_TIMER_FREQ						20
-#define HANDY_AUDIO_SAMPLE_FREQ					44100
 #define HANDY_AUDIO_SAMPLE_PERIOD				(HANDY_SYSTEM_FREQ/HANDY_AUDIO_SAMPLE_FREQ)
 #define HANDY_AUDIO_WAVESHAPER_TABLE_LENGTH		0x200000
 
@@ -76,11 +79,11 @@
 #endif
 
 #ifndef __min
-#define __min(x, y) ((x < y) ? x : y)
+#define __min(x, y) (((x) < (y)) ? (x) : (y))
 #endif
 
 #ifndef __max
-#define __max(x, y) ((x > y) ? x : y)
+#define __max(x, y) (((x) > (y)) ? (x) : (y))
 #endif
 
 #define HANDY_FILETYPE_LNX		0
