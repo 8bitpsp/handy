@@ -12,20 +12,26 @@
 #include "ctrl.h"
 #include "perf.h"
 #include "image.h"
-#include "kybd.h"
 
+#include "menu.h"
 #include "emulate.h"
 
 #include "lynxdef.h"
 #include "System.h"
 
-static CSystem *LynxSystem = NULL;
+extern CSystem *LynxSystem;
+extern EmulatorOptions Options;
 
 static int TicksPerUpdate;
 static u32 TicksPerSecond;
 static u64 LastTick;
-static u64 CurrentTick;
 
+static int ScreenX;
+static int ScreenY;
+static int ScreenW;
+static int ScreenH;
+
+static int ClearScreen;
 static PspFpsCounter Counter;
 PspImage *Screen = NULL;
 
@@ -35,40 +41,10 @@ void AudioCallback(void *buffer, unsigned int *samples, void *userdata);
 /* Initialize emulation */
 int InitEmulation()
 {
-  gAudioEnabled = TRUE;
-
-	pspPerfInitFps(&Counter);
+  pspPerfInitFps(&Counter);
 
 	if (!(Screen = pspImageCreateVram(256, HANDY_SCREEN_HEIGHT, PSP_IMAGE_16BPP)))
 		return 0;
-
-	Screen->Viewport.Width = HANDY_SCREEN_WIDTH;
-
-	char *rom_file = (char*)malloc(sizeof(char) * (strlen(pspGetAppDirectory()) + 13));
-  sprintf(rom_file, "%slynxboot.img", pspGetAppDirectory());
-  char *game_file = "flack.lnx";
-
-	try
-	{
-		LynxSystem = new CSystem(game_file, rom_file);
-	}
-	catch(CLynxException &err)
-	{
-		pspImageDestroy(Screen);
-		free(rom_file);
-
-		/* TODO */
-		FILE *foo=fopen("ms0:/log.txt","w");
-		fprintf(foo, "%s: %s\n", err.mDesc, err.mMsg);
-		fclose(foo);
-
-		return 0;
-	}
-
-	free(rom_file);
-
-	LynxSystem->DisplaySetAttributes(MIKIE_NO_ROTATE, MIKIE_PIXEL_FORMAT_16BPP_5551, 
-	  Screen->Width * Screen->BytesPerPixel, DisplayCallback, 0);
 
   return 1;
 }
@@ -77,18 +53,41 @@ UBYTE* DisplayCallback(ULONG objref)
 {
   pspVideoBegin();
 
-  pspVideoPutImage(Screen, 0, 0, Screen->Viewport.Width, Screen->Viewport.Height);
+  /* Clear the buffer first, if necessary */
+  if (ClearScreen >= 0)
+  {
+    ClearScreen--;
+    pspVideoClearScreen();
+  }
 
-	static char fps_text[32];
-	sprintf(fps_text, "%.02f", pspPerfGetFps(&Counter));
-  pspVideoPrint(&PspStockFont, 0, 0, fps_text, PSP_COLOR_WHITE);
+  pspVideoPutImage(Screen, ScreenX, ScreenY, ScreenW, ScreenH);
+
+  /* Show FPS counter */
+  if (Options.ShowFps)
+  {
+    static char fps_display[32];
+    sprintf(fps_display, " %3.02f", pspPerfGetFps(&Counter));
+
+    int width = pspFontGetTextWidth(&PspStockFont, fps_display);
+    int height = pspFontGetLineHeight(&PspStockFont);
+
+    pspVideoFillRect(SCR_WIDTH - width, 0, SCR_WIDTH, height, PSP_COLOR_BLACK);
+    pspVideoPrint(&PspStockFont, SCR_WIDTH - width, 0, fps_display, PSP_COLOR_WHITE);
+  }
 
   pspVideoEnd();
-  
+
+  /* Wait for V. refresh */
+  if (Options.VSync) pspVideoWaitVSync();
+
   /* Wait */
-  do { sceRtcGetCurrentTick(&CurrentTick); }
-  while (CurrentTick - LastTick < TicksPerUpdate);
-  LastTick = CurrentTick;
+  if (Options.UpdateFreq)
+  {
+    u64 current_tick;
+    do { sceRtcGetCurrentTick(&current_tick); }
+    while (current_tick - LastTick < TicksPerUpdate);
+    LastTick = current_tick;
+  }
 
   pspVideoSwapBuffers();
 
@@ -98,36 +97,80 @@ UBYTE* DisplayCallback(ULONG objref)
 /* Release emulation resources */
 void TrashEmulation()
 {
-	if (LynxSystem) delete LynxSystem;
 	if (Screen) pspImageDestroy(Screen);
 }
 
 /* Run emulation */
 void RunEmulation()
 {
-	ULONG buttons;
+  gAudioEnabled = TRUE;
+  LynxSystem->DisplaySetAttributes(MIKIE_NO_ROTATE, MIKIE_PIXEL_FORMAT_16BPP_5551,
+    Screen->Width * Screen->BytesPerPixel, DisplayCallback, 0);
+  Screen->Viewport.Width = HANDY_SCREEN_WIDTH;
+
+  float ratio;
+
+  /* Recompute screen size/position */
+  switch (Options.DisplayMode)
+  {
+  default:
+  case DISPLAY_MODE_UNSCALED:
+    ScreenW = Screen->Viewport.Width;
+    ScreenH = Screen->Viewport.Height;
+    break;
+  case DISPLAY_MODE_FIT_HEIGHT:
+    ratio = (float)SCR_HEIGHT / (float)Screen->Viewport.Height;
+    ScreenW = (int)((float)Screen->Viewport.Width * ratio) - 2;
+    ScreenH = SCR_HEIGHT;
+    break;
+  case DISPLAY_MODE_FILL_SCREEN:
+    ScreenW = SCR_WIDTH - 3;
+    ScreenH = SCR_HEIGHT;
+    break;
+  }
+
+  ScreenX = (SCR_WIDTH / 2) - (ScreenW / 2);
+  ScreenY = (SCR_HEIGHT / 2) - (ScreenH / 2);
+
+  ClearScreen = 1;
+
+  ULONG buttons;
 	SceCtrlData pad;
 
 	pspPerfInitFps(&Counter);
 
   /* Recompute update frequency */
-  TicksPerSecond = sceRtcGetTickResolution();
-  TicksPerUpdate = TicksPerSecond / 60;
-  sceRtcGetCurrentTick(&LastTick);
+  if (Options.UpdateFreq)
+  {
+    TicksPerSecond = sceRtcGetTickResolution();
+    TicksPerUpdate = TicksPerSecond / Options.UpdateFreq;
+    sceRtcGetCurrentTick(&LastTick);
+  }
+
+  /* Wait for V. refresh */
+  pspVideoWaitVSync();
 
   /* Resume sound */
-  pspAudioSetChannelCallback(0, AudioCallback, 0);
-pspSetClockFrequency(333);
+int foo=0;
+//  pspAudioSetChannelCallback(0, AudioCallback, 0);
 	while (!ExitPSP)
 	{
 		for (ULONG loop = 1024; loop; loop--)
 			LynxSystem->Update();
+if (!foo)
+{
+  pspAudioSetChannelCallback(0, AudioCallback, 0);
+  foo=1;
+}
 
 		buttons = LynxSystem->GetButtonData();
 		
 		if (pspCtrlPollControls(&pad))
 		{
-			if (pad.Buttons & PSP_CTRL_SQUARE) buttons |= BUTTON_B;
+      if ((pad.Buttons & PSP_CTRL_LTRIGGER) && (pad.Buttons & PSP_CTRL_RTRIGGER))
+        break;
+			
+      if (pad.Buttons & PSP_CTRL_SQUARE) buttons |= BUTTON_B;
 			else buttons &= BUTTON_B ^ 0xffffffff;
 
 			if (pad.Buttons & PSP_CTRL_TRIANGLE) buttons |= BUTTON_A;
@@ -157,34 +200,27 @@ pspSetClockFrequency(333);
 
 		LynxSystem->SetButtonData(buttons);
 	}
-pspSetClockFrequency(222);
 
   /* Stop sound */
   pspAudioSetChannelCallback(0, NULL, 0);
 }
 
+static ULONG previous_buffer_pos = 0;
+
 inline void AudioCallback(void *buffer, unsigned int *length, void *userdata)
 {
+sceKernelDelayThread(1000000/10);
   PspMonoSample *OutBuf = (PspMonoSample*)buffer;
   int i, play_length, played = 0;
-  static ULONG previous_buffer_pos = 0;
-//sceKernelDelayThread(1000000/20);
-//  while (gAudioBufferPointer == previous_buffer_pos);
   ULONG current_buffer_pos = gAudioBufferPointer;
-
-  if (current_buffer_pos == previous_buffer_pos)
-  {
-    for (*length = 0; *length < 64; *length++)
-      OutBuf[*length].Channel = 0;
-    return;
-  }
-  else
-  if (current_buffer_pos > previous_buffer_pos)
+  
+  if (current_buffer_pos >= previous_buffer_pos)
   {
     /* Compute length */
     play_length = current_buffer_pos - previous_buffer_pos;
     *length = PSP_AUDIO_SAMPLE_TRUNCATE(play_length);
 
+    /* If not enough data, render silence */
     if (*length < 64)
     {
       for (*length = 0; *length < 64; *length++)
@@ -202,6 +238,7 @@ inline void AudioCallback(void *buffer, unsigned int *length, void *userdata)
     play_length = (HANDY_AUDIO_BUFFER_SIZE - previous_buffer_pos) + current_buffer_pos;
     *length = PSP_AUDIO_SAMPLE_TRUNCATE(play_length);
 
+    /* If not enough data, render silence */
     if (*length < 64)
     {
       for (*length = 0; *length < 64; *length++)

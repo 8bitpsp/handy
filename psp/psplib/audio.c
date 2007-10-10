@@ -225,7 +225,7 @@ static int AudioChannelThread(int args, void *argp)
   unsigned short *ptr_m;
   unsigned int *ptr_s;
   void *bufptr;
-  unsigned int *samples;
+  unsigned int samples;
   pspAudioCallback callback;
 
   for (i = 0; i < 2; i++)
@@ -236,17 +236,17 @@ static int AudioChannelThread(int args, void *argp)
   {
     callback = AudioStatus[channel].Callback;
     bufptr = AudioBuffer[channel][bufidx];
-    samples = &(AudioBufferSamples[channel][bufidx]);
+    samples = AudioBufferSamples[channel][bufidx];
 
-    if (callback) callback(bufptr, samples, AudioStatus[channel].Userdata);
+    if (callback) callback(bufptr, &samples, AudioStatus[channel].Userdata);
     else
     {
-      if (Stereo) for (i = 0, ptr_s = bufptr; i < *samples; i++) *(ptr_s++) = 0;
-      else for (i = 0, ptr_m = bufptr; i < *samples; i++) *(ptr_m++) = 0;
+      if (Stereo) for (i = 0, ptr_s = bufptr; i < samples; i++) *(ptr_s++) = 0;
+      else for (i = 0, ptr_m = bufptr; i < samples; i++) *(ptr_m++) = 0;
     }
 
 	  OutputBlocking(channel, AudioStatus[channel].LeftVolume, 
-      AudioStatus[channel].RightVolume, bufptr, *samples);
+      AudioStatus[channel].RightVolume, bufptr, samples);
 
     bufidx = (bufidx ? 0 : 1);
   }

@@ -72,11 +72,13 @@
 #define HANDY_AUDIO_SAMPLE_PERIOD				(HANDY_SYSTEM_FREQ/HANDY_AUDIO_SAMPLE_FREQ)
 #define HANDY_AUDIO_WAVESHAPER_TABLE_LENGTH		0x200000
 
+#ifndef HANDY_AUDIO_BUFFER_SIZE
 #ifdef LINUX_PATCH
 #define HANDY_AUDIO_BUFFER_SIZE					4096	// Needed forSDL
-#else
+#else // LINUX_PATCH
 #define HANDY_AUDIO_BUFFER_SIZE					(HANDY_AUDIO_SAMPLE_FREQ/4)
-#endif
+#endif // else LINUX_PATCH
+#endif // HANDY_AUDIO_BUFFER_SIZE
 
 #ifndef __min
 #define __min(x, y) (((x) < (y)) ? (x) : (y))

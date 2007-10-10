@@ -9,6 +9,8 @@
 #include "psp.h"
 #include "ctrl.h"
 
+#include "System.h"
+
 #include "psp/menu.h"
 
 PSP_MODULE_INFO(PSP_APP_NAME, 0, 1, 1);
@@ -23,7 +25,7 @@ int main(int argc, char **argv)
 {
   /* Initialize PSP */
   pspInit(argv[0]);
-  pspAudioInit(HANDY_AUDIO_SAMPLE_FREQ/4, 0);
+  pspAudioInit(HANDY_AUDIO_BUFFER_SIZE, 0);
   pspCtrlInit();
   pspVideoInit();
 
