@@ -467,10 +467,19 @@ void CSystem::Reset(void)
 
 bool CSystem::ContextSave(char *context)
 {
-	FILE *fp;
-	bool status=1;
+  FILE *fp;
+  bool status;
+  
+  if((fp=fopen(context,"wb"))==NULL) return false;
+  status = ContextSave(fp);
+  fclose(fp);
 
-	if((fp=fopen(context,"wb"))==NULL) return false;
+  return status;
+}
+
+bool CSystem::ContextSave(FILE *fp)
+{
+	bool status=1;
 
 	if(!fprintf(fp,LSS_VERSION)) status=0;
 
@@ -513,14 +522,11 @@ bool CSystem::ContextSave(char *context)
 	if(!mSusie->ContextSave(fp)) status=0;
 	if(!mCpu->ContextSave(fp)) status=0;
 
-	fclose(fp);
 	return status;
 }
 
-			 
 bool CSystem::ContextLoad(char *context)
 {
-	LSS_FILE *fp;
 	bool status=1;
 	UBYTE *filememory=NULL;
 	ULONG filesize=0;
@@ -634,93 +640,129 @@ bool CSystem::ContextLoad(char *context)
 		fclose(fp);
 	}
 
-	// Setup our read structure
-	fp = new LSS_FILE;
-	fp->memptr=filememory;
-	fp->index=0;
-	fp->index_limit=filesize;
-
-	char teststr[100];
-	// Check identifier
-	if(!lss_read(teststr,sizeof(char),4,fp)) status=0;
-	teststr[4]=0;
-
-	if(strcmp(teststr,LSS_VERSION)==0 || strcmp(teststr,LSS_VERSION_OLD)==0)
-	{
-		bool legacy=FALSE;
-		if(strcmp(teststr,LSS_VERSION_OLD)==0)
-		{
-			legacy=TRUE;
-		}
-		else
-		{
-			ULONG checksum;
-			// Read CRC32 and check against the CART for a match
-			lss_read(&checksum,sizeof(ULONG),1,fp);
-			if(mCart->CRC32()!=checksum)
-			{
-				delete fp;
-				delete filememory;
-				gError->Warning("LSS Snapshot CRC does not match the loaded cartridge image, aborting load");
-				return 0;
-			}
-		}
-
-		// Check our block header
-		if(!lss_read(teststr,sizeof(char),20,fp)) status=0;
-		teststr[20]=0;
-		if(strcmp(teststr,"CSystem::ContextSave")!=0) status=0;
-
-		if(!lss_read(&mCycleCountBreakpoint,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gSystemCycleCount,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gNextTimerEvent,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gCPUWakeupTime,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gCPUBootAddress,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gIRQEntryCycle,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gBreakpointHit,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gSingleStepMode,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gSystemIRQ,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gSystemNMI,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gSystemCPUSleep,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gSystemCPUSleep_Saved,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gSystemHalt,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gThrottleMaxPercentage,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gThrottleLastTimerCount,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gThrottleNextCycleCheckpoint,sizeof(ULONG),1,fp)) status=0;
-
-		ULONG tmp;
-		if(!lss_read(&tmp,sizeof(ULONG),1,fp)) status=0;
-		gTimerCount=tmp;
-
-		if(!lss_read(gAudioBuffer,sizeof(UBYTE),HANDY_AUDIO_BUFFER_SIZE,fp)) status=0;
-		if(!lss_read(&gAudioBufferPointer,sizeof(ULONG),1,fp)) status=0;
-		if(!lss_read(&gAudioLastUpdateCycle,sizeof(ULONG),1,fp)) status=0;
-
-		if(!mMemMap->ContextLoad(fp)) status=0;
-		// Legacy support
-		if(legacy)
-		{
-			if(!mCart->ContextLoadLegacy(fp)) status=0;
-			if(!mRom->ContextLoad(fp)) status=0;
-		}
-		else
-		{
-			if(!mCart->ContextLoad(fp)) status=0;
-		}
-		if(!mRam->ContextLoad(fp)) status=0;
-		if(!mMikie->ContextLoad(fp)) status=0;
-		if(!mSusie->ContextLoad(fp)) status=0;
-		if(!mCpu->ContextLoad(fp)) status=0;
-	}
-	else
-	{
-		gError->Warning("Not a recognised LSS file");
-	}
-
-	delete fp;
-	delete filememory;
+  status = ContextLoad(filememory, filesize);
+	
+  delete filememory;
 
 	return status;
+}
+
+bool CSystem::ContextLoad(FILE *fp)
+{
+  bool status;
+  UBYTE *filememory=NULL;
+  ULONG filesize=0;
+  ULONG initial_pos;
+
+  initial_pos = ftell(fp);
+  fseek(fp,0,SEEK_END);
+  filesize=ftell(fp) - initial_pos;
+  fseek(fp,initial_pos,SEEK_SET);
+  filememory=(UBYTE*) new UBYTE[filesize];
+
+  if(fread(filememory,sizeof(char),filesize,fp)!=filesize)
+  {
+    delete filememory;
+    return 1;
+  }
+
+  status = ContextLoad(filememory, filesize);
+  delete filememory;
+
+  return status;
+}
+
+bool CSystem::ContextLoad(UBYTE *filememory, ULONG filesize)
+{
+  bool status = 1;
+  LSS_FILE *fp;
+  
+  // Setup our read structure
+  fp = new LSS_FILE;
+  fp->memptr=filememory;
+  fp->index=0;
+  fp->index_limit=filesize;
+
+  char teststr[100];
+  // Check identifier
+  if(!lss_read(teststr,sizeof(char),4,fp)) status=0;
+  teststr[4]=0;
+
+  if(strcmp(teststr,LSS_VERSION)==0 || strcmp(teststr,LSS_VERSION_OLD)==0)
+  {
+    bool legacy=FALSE;
+    if(strcmp(teststr,LSS_VERSION_OLD)==0)
+    {
+      legacy=TRUE;
+    }
+    else
+    {
+      ULONG checksum;
+      // Read CRC32 and check against the CART for a match
+      lss_read(&checksum,sizeof(ULONG),1,fp);
+      if(mCart->CRC32()!=checksum)
+      {
+        delete fp;
+        delete filememory;
+        gError->Warning("LSS Snapshot CRC does not match the loaded cartridge image, aborting load");
+        return 0;
+      }
+    }
+
+    // Check our block header
+    if(!lss_read(teststr,sizeof(char),20,fp)) status=0;
+    teststr[20]=0;
+    if(strcmp(teststr,"CSystem::ContextSave")!=0) status=0;
+
+    if(!lss_read(&mCycleCountBreakpoint,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gSystemCycleCount,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gNextTimerEvent,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gCPUWakeupTime,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gCPUBootAddress,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gIRQEntryCycle,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gBreakpointHit,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gSingleStepMode,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gSystemIRQ,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gSystemNMI,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gSystemCPUSleep,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gSystemCPUSleep_Saved,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gSystemHalt,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gThrottleMaxPercentage,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gThrottleLastTimerCount,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gThrottleNextCycleCheckpoint,sizeof(ULONG),1,fp)) status=0;
+
+    ULONG tmp;
+    if(!lss_read(&tmp,sizeof(ULONG),1,fp)) status=0;
+    gTimerCount=tmp;
+
+    if(!lss_read(gAudioBuffer,sizeof(UBYTE),HANDY_AUDIO_BUFFER_SIZE,fp)) status=0;
+    if(!lss_read(&gAudioBufferPointer,sizeof(ULONG),1,fp)) status=0;
+    if(!lss_read(&gAudioLastUpdateCycle,sizeof(ULONG),1,fp)) status=0;
+
+    if(!mMemMap->ContextLoad(fp)) status=0;
+    // Legacy support
+    if(legacy)
+    {
+      if(!mCart->ContextLoadLegacy(fp)) status=0;
+      if(!mRom->ContextLoad(fp)) status=0;
+    }
+    else
+    {
+      if(!mCart->ContextLoad(fp)) status=0;
+    }
+    if(!mRam->ContextLoad(fp)) status=0;
+    if(!mMikie->ContextLoad(fp)) status=0;
+    if(!mSusie->ContextLoad(fp)) status=0;
+    if(!mCpu->ContextLoad(fp)) status=0;
+  }
+  else
+  {
+    gError->Warning("Not a recognised LSS file");
+  }
+
+  delete fp;
+
+  return status;
 }
 
 #ifdef _LYNXDBG

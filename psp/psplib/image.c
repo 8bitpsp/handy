@@ -128,6 +128,184 @@ void pspImageDestroy(PspImage *image)
   free(image);
 }
 
+/*
+PspImage* pspImageRotate(const PspImage *orig, int angle_cw)
+{
+  PspImage *final;
+
+  /* Create image of appropriate size *
+  switch(angle_cw)
+  {
+  case 0:
+    return pspImageCreateCopy(orig);
+  case 90:
+    final = pspImageCreate(orig->Height, orig->Width, orig->Depth);
+    break;
+  case 180:
+    final = pspImageCreate(orig->Width, orig->Height, orig->Depth);
+    break;
+  case 270:
+    final = pspImageCreate(orig->Height, orig->Width, orig->Depth);
+    break;
+  default:
+    return NULL;
+  }
+
+  /* Copy image contents *
+  int i, j, si, di = 0;
+  for (i = 0, si = 0; i < orig->Height; i++)
+  {
+    for (j = 0; j < orig->Width; j++, si++)
+    {
+      switch(angle_cw)
+      {
+      case 90:
+        di = j * final->Width + (final->Width - i - 1);
+        break;
+      case 180:
+        di = (final->Height - i - 1) * final->Width + (final->Width - j - 1);
+        break;
+      case 270:
+        di = (final->Height - j - 1) * final->Width + i;
+        break;
+      }
+
+      if (orig->Depth == PSP_IMAGE_INDEXED)
+        ((unsigned char*)final->Pixels)[di] = ((unsigned char*)orig->Pixels)[si];
+      else ((unsigned short*)final->Pixels)[di] = ((unsigned short*)orig->Pixels)[si];
+    }
+  }
+
+  /* Set viewport *
+  switch(angle_cw)
+  {
+  case 90:
+    final->Viewport.X = orig->Height - (orig->Viewport.Y + orig->Viewport.Height);
+    final->Viewport.Y = orig->Viewport.X;
+    final->Viewport.Width = orig->Viewport.Height;
+    final->Viewport.Height = orig->Viewport.Width;
+    break;
+  case 180:
+    final->Viewport.X = orig->Width - (orig->Viewport.X + orig->Viewport.Width);
+    final->Viewport.Y = orig->Height - (orig->Viewport.Y + orig->Viewport.Height);
+    final->Viewport.Width = orig->Viewport.Width;
+    final->Viewport.Height = orig->Viewport.Height;
+    break;
+  case 270:
+    final->Viewport.X = orig->Viewport.Y;
+    final->Viewport.Y = orig->Width - (orig->Viewport.X + orig->Viewport.Width);
+    final->Viewport.Width = orig->Viewport.Height;
+    final->Viewport.Height = orig->Viewport.Width;
+    break;
+  default:
+    return NULL;
+  }
+
+  if (orig->Depth == PSP_IMAGE_INDEXED)
+    memcpy(final->Palette, orig->Palette, sizeof(orig->Palette));
+
+  return final;
+}
+*/
+
+PspImage* pspImageRotate(const PspImage *orig, int angle_cw)
+{
+  PspImage *final;
+
+  /* Create image of appropriate size */
+  switch(angle_cw)
+  {
+  case 0:
+    return pspImageCreateCopy(orig);
+  case 90:
+    final = pspImageCreate(orig->Viewport.Height, orig->Viewport.Width, orig->Depth);
+    break;
+  case 180:
+    final = pspImageCreate(orig->Viewport.Width, orig->Viewport.Height, orig->Depth);
+    break;
+  case 270:
+    final = pspImageCreate(orig->Viewport.Height, orig->Viewport.Width, orig->Depth);
+    break;
+  default:
+    return NULL;
+  }
+
+  /* Copy image contents */
+  int i, j, di = 0;
+  int width = final->Width;
+  int height = final->Height;
+  
+  if (orig->Depth == PSP_IMAGE_INDEXED)
+  {
+    const unsigned char *pixel;
+    pixel = (unsigned char*)orig->Pixels + (orig->Viewport.Y * orig->Width);
+
+    for (i = 0; i < height; i++)
+    {
+      /* Skip to the start of the viewport */
+      pixel += orig->Viewport.X;
+
+      for (j = 0; j < width; j++, pixel++)
+      {
+        switch(angle_cw)
+        {
+        case 90:
+          di = j * final->Width + (final->Width - i - 1);
+          break;
+        case 180:
+          di = (final->Height - i - 1) * final->Width + (final->Width - j - 1);
+          break;
+        case 270:
+          di = (final->Height - j - 1) * final->Width + i;
+          break;
+        }
+
+        ((unsigned char*)final->Pixels)[di] = *pixel;
+      }
+
+      /* Skip to the end of the line */
+      pixel += orig->Width - (orig->Viewport.X + width);
+    }
+  }
+  else
+  {
+    const unsigned short *pixel;
+    pixel = (unsigned short*)orig->Pixels + (orig->Viewport.Y * orig->Width);
+
+    for (i = 0; i < height; i++)
+    {
+      /* Skip to the start of the viewport */
+      pixel += orig->Viewport.X;
+
+      for (j = 0; j < width; j++, pixel++)
+      {
+        switch(angle_cw)
+        {
+        case 90:
+          di = ((j + 1) * height - 1) - i;
+          break;
+        case 180:
+          di = (height - i - 1) * width + (width - j - 1);
+          break;
+        case 270:
+          di = (width - j - 1) * height + i;
+          break;
+        }
+
+        ((unsigned short*)final->Pixels)[di] = *pixel;
+      }
+
+      /* Skip to the end of the line */
+      pixel += orig->Width - (orig->Viewport.X + width);
+    }
+  }
+
+  if (orig->Depth == PSP_IMAGE_INDEXED)
+    memcpy(final->Palette, orig->Palette, sizeof(orig->Palette));
+
+  return final;
+}
+
 /* Creates a half-sized thumbnail of an image */
 PspImage* pspImageCreateThumbnail(const PspImage *image)
 {
@@ -384,7 +562,7 @@ int pspImageSavePngFd(FILE *fp, const PspImage* image)
   if (image->Depth == PSP_IMAGE_INDEXED)
   {
     const unsigned char *pixel;
-    pixel = image->Pixels + (image->Viewport.Y * image->Width);
+    pixel = (unsigned char*)image->Pixels + (image->Viewport.Y * image->Width);
 
     for (i = 0; i < height; i++)
     {
@@ -403,7 +581,7 @@ int pspImageSavePngFd(FILE *fp, const PspImage* image)
   else
   {
     const unsigned short *pixel;
-    pixel = image->Pixels + (image->Viewport.Y * image->Width);
+    pixel = (unsigned short*)image->Pixels + (image->Viewport.Y * image->Width);
 
     for (i = 0; i < height; i++)
     {

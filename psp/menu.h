@@ -18,6 +18,7 @@ typedef struct
   int VSync;
   int UpdateFreq;
   int Frameskip;
+  int Rotation;
 } EmulatorOptions;
 
 #endif // _MENU_H

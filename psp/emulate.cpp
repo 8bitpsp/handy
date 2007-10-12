@@ -43,8 +43,9 @@ int InitEmulation()
 {
   pspPerfInitFps(&Counter);
 
-	if (!(Screen = pspImageCreateVram(256, HANDY_SCREEN_HEIGHT, PSP_IMAGE_16BPP)))
-		return 0;
+	if (!(Screen = pspImageCreateVram(256,
+    max(HANDY_SCREEN_WIDTH, HANDY_SCREEN_HEIGHT), PSP_IMAGE_16BPP)))
+		  return 0;
 
   return 1;
 }
@@ -104,9 +105,22 @@ void TrashEmulation()
 void RunEmulation()
 {
   gAudioEnabled = TRUE;
-  LynxSystem->DisplaySetAttributes(MIKIE_NO_ROTATE, MIKIE_PIXEL_FORMAT_16BPP_5551,
+
+  switch(Options.Rotation)
+  {
+  case MIKIE_NO_ROTATE:
+    Screen->Viewport.Width = HANDY_SCREEN_WIDTH;
+    Screen->Viewport.Height = HANDY_SCREEN_HEIGHT;
+    break;
+  case MIKIE_ROTATE_L:
+  case MIKIE_ROTATE_R:
+    Screen->Viewport.Width = HANDY_SCREEN_HEIGHT;
+    Screen->Viewport.Height = HANDY_SCREEN_WIDTH;
+    break;
+  }
+  
+  LynxSystem->DisplaySetAttributes(Options.Rotation, MIKIE_PIXEL_FORMAT_16BPP_5551,
     Screen->Width * Screen->BytesPerPixel, DisplayCallback, 0);
-  Screen->Viewport.Width = HANDY_SCREEN_WIDTH;
 
   float ratio;
 

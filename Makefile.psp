@@ -11,7 +11,7 @@ PSP_APP_VER=0.95.1
 TARGET=handypsp
 EXTRA_TARGETS=EBOOT.PBP
 PSP_EBOOT_TITLE=$(PSP_APP_NAME) $(PSP_APP_VER)
-#PSP_EBOOT_ICON=$(DATA)/smsp-icon.png
+PSP_EBOOT_ICON=$(DATA)/handy-icon.png
 
 BUILD_PSPLIB=$(PSPLIB)/psp.o $(PSPLIB)/font.o $(PSPLIB)/image.o \
              $(PSPLIB)/video.o $(PSPLIB)/audio.o $(PSPLIB)/fileio.o \

@@ -205,6 +205,7 @@ class CMikie : public CLynxBase
 		void	ComLynxTxCallback(void (*function)(int data,ULONG objref),ULONG objref);
 		
 		void	DisplaySetAttributes(ULONG Rotate, ULONG Format, ULONG Pitch, UBYTE* (*DisplayCallback)(ULONG objref),ULONG objref);
+    ULONG DisplayGetRotation()  { return mDisplayRotate; }
 		
 		void	BlowOut(void);
 

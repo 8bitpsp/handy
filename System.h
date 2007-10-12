@@ -199,10 +199,15 @@ class CSystem : public CSystemBase
 		CSystem(char* gamefile,char* romfile);
 		~CSystem();
 
+  private:
+    bool  ContextLoad(UBYTE *filememory, ULONG filesize);
+
 	public:
 		void	Reset(void);
 		bool	ContextSave(char *context);
+    bool  ContextSave(FILE *fp);
 		bool	ContextLoad(char *context);
+    bool  ContextLoad(FILE *fp);
 		bool	IsZip(char *filename);
 
 		inline void Update(void)
@@ -290,7 +295,8 @@ class CSystem : public CSystemBase
 
 // Mikey system interfacing
 
-		void	DisplaySetAttributes(ULONG Rotate,ULONG Format,ULONG Pitch,UBYTE* (*DisplayCallback)(ULONG objref),ULONG objref) { mMikie->DisplaySetAttributes(Rotate,Format,Pitch,DisplayCallback,objref); };
+    void  DisplaySetAttributes(ULONG Rotate,ULONG Format,ULONG Pitch,UBYTE* (*DisplayCallback)(ULONG objref),ULONG objref) { mMikie->DisplaySetAttributes(Rotate,Format,Pitch,DisplayCallback,objref); };
+    ULONG DisplayGetRotation() { return mMikie->DisplayGetRotation(); }
 
 		void	ComLynxCable(int status) { mMikie->ComLynxCable(status); };
 		void	ComLynxRxData(int data)  { mMikie->ComLynxRxData(data); };
