@@ -250,7 +250,7 @@ PspImage* pspImageRotate(const PspImage *orig, int angle_cw)
         switch(angle_cw)
         {
         case 90:
-          di = j * final->Width + (final->Width - i - 1);
+          di = (width - 1) * (j + 1) + j - i;
           break;
         case 180:
           di = (final->Height - i - 1) * final->Width + (final->Width - j - 1);
@@ -271,18 +271,23 @@ PspImage* pspImageRotate(const PspImage *orig, int angle_cw)
   {
     const unsigned short *pixel;
     pixel = (unsigned short*)orig->Pixels + (orig->Viewport.Y * orig->Width);
-
-    for (i = 0; i < height; i++)
+/*
+FILE *foo=fopen("ms0:/log.txt","a");
+fprintf(foo,"width=%i\theight=%i\n",width, height);
+fclose(foo);
+*/
+		int k;
+    for (i = 0, k = 0; i < height; i++)
     {
       /* Skip to the start of the viewport */
       pixel += orig->Viewport.X;
 
-      for (j = 0; j < width; j++, pixel++)
+      for (j = 0; j < width; j++, pixel++, k++)
       {
         switch(angle_cw)
         {
         case 90:
-          di = ((j + 1) * height - 1) - i;
+          di = (width * (k % height) - (k / height)) + width - 1;
           break;
         case 180:
           di = (height - i - 1) * width + (width - j - 1);
@@ -291,7 +296,11 @@ PspImage* pspImageRotate(const PspImage *orig, int angle_cw)
           di = (width - j - 1) * height + i;
           break;
         }
-
+/*
+FILE *foo=fopen("ms0:/log.txt","a");
+fprintf(foo,"si=%i\tdi=%i\n",si, di);
+fclose(foo);
+*/
         ((unsigned short*)final->Pixels)[di] = *pixel;
       }
 
