@@ -128,86 +128,6 @@ void pspImageDestroy(PspImage *image)
   free(image);
 }
 
-/*
-PspImage* pspImageRotate(const PspImage *orig, int angle_cw)
-{
-  PspImage *final;
-
-  /* Create image of appropriate size *
-  switch(angle_cw)
-  {
-  case 0:
-    return pspImageCreateCopy(orig);
-  case 90:
-    final = pspImageCreate(orig->Height, orig->Width, orig->Depth);
-    break;
-  case 180:
-    final = pspImageCreate(orig->Width, orig->Height, orig->Depth);
-    break;
-  case 270:
-    final = pspImageCreate(orig->Height, orig->Width, orig->Depth);
-    break;
-  default:
-    return NULL;
-  }
-
-  /* Copy image contents *
-  int i, j, si, di = 0;
-  for (i = 0, si = 0; i < orig->Height; i++)
-  {
-    for (j = 0; j < orig->Width; j++, si++)
-    {
-      switch(angle_cw)
-      {
-      case 90:
-        di = j * final->Width + (final->Width - i - 1);
-        break;
-      case 180:
-        di = (final->Height - i - 1) * final->Width + (final->Width - j - 1);
-        break;
-      case 270:
-        di = (final->Height - j - 1) * final->Width + i;
-        break;
-      }
-
-      if (orig->Depth == PSP_IMAGE_INDEXED)
-        ((unsigned char*)final->Pixels)[di] = ((unsigned char*)orig->Pixels)[si];
-      else ((unsigned short*)final->Pixels)[di] = ((unsigned short*)orig->Pixels)[si];
-    }
-  }
-
-  /* Set viewport *
-  switch(angle_cw)
-  {
-  case 90:
-    final->Viewport.X = orig->Height - (orig->Viewport.Y + orig->Viewport.Height);
-    final->Viewport.Y = orig->Viewport.X;
-    final->Viewport.Width = orig->Viewport.Height;
-    final->Viewport.Height = orig->Viewport.Width;
-    break;
-  case 180:
-    final->Viewport.X = orig->Width - (orig->Viewport.X + orig->Viewport.Width);
-    final->Viewport.Y = orig->Height - (orig->Viewport.Y + orig->Viewport.Height);
-    final->Viewport.Width = orig->Viewport.Width;
-    final->Viewport.Height = orig->Viewport.Height;
-    break;
-  case 270:
-    final->Viewport.X = orig->Viewport.Y;
-    final->Viewport.Y = orig->Width - (orig->Viewport.X + orig->Viewport.Width);
-    final->Viewport.Width = orig->Viewport.Height;
-    final->Viewport.Height = orig->Viewport.Width;
-    break;
-  default:
-    return NULL;
-  }
-
-  if (orig->Depth == PSP_IMAGE_INDEXED)
-    memcpy(final->Palette, orig->Palette, sizeof(orig->Palette));
-
-  return final;
-}
-*/
-
 PspImage* pspImageRotate(const PspImage *orig, int angle_cw)
 {
   PspImage *final;
@@ -218,95 +138,60 @@ PspImage* pspImageRotate(const PspImage *orig, int angle_cw)
   case 0:
     return pspImageCreateCopy(orig);
   case 90:
-    final = pspImageCreate(orig->Viewport.Height, orig->Viewport.Width, orig->Depth);
+    final = pspImageCreate(orig->Viewport.Height,
+      orig->Viewport.Width, orig->Depth);
     break;
   case 180:
-    final = pspImageCreate(orig->Viewport.Width, orig->Viewport.Height, orig->Depth);
+    final = pspImageCreate(orig->Viewport.Width,
+      orig->Viewport.Height, orig->Depth);
     break;
   case 270:
-    final = pspImageCreate(orig->Viewport.Height, orig->Viewport.Width, orig->Depth);
+    final = pspImageCreate(orig->Viewport.Height,
+      orig->Viewport.Width, orig->Depth);
     break;
   default:
     return NULL;
   }
 
-  /* Copy image contents */
-  int i, j, di = 0;
+  int i, j, k, di = 0;
   int width = final->Width;
   int height = final->Height;
+  int l_shift = orig->BytesPerPixel >> 1;
   
-  if (orig->Depth == PSP_IMAGE_INDEXED)
+  const unsigned char *source = (unsigned char*)orig->Pixels;
+  unsigned char *dest = (unsigned char*)final->Pixels;
+
+  /* Skip to Y viewport starting point */
+  source += (orig->Viewport.Y * orig->Width) << l_shift;
+
+  /* Copy image contents */
+  for (i = 0, k = 0; i < orig->Viewport.Height; i++)
   {
-    const unsigned char *pixel;
-    pixel = (unsigned char*)orig->Pixels + (orig->Viewport.Y * orig->Width);
+    /* Skip to the start of the X viewport */
+    source += orig->Viewport.X << l_shift;
 
-    for (i = 0; i < height; i++)
+    for (j = 0; j < orig->Viewport.Width; j++, source += 1 << l_shift, k++)
     {
-      /* Skip to the start of the viewport */
-      pixel += orig->Viewport.X;
-
-      for (j = 0; j < width; j++, pixel++)
+      switch(angle_cw)
       {
-        switch(angle_cw)
-        {
-        case 90:
-          di = (width - 1) * (j + 1) + j - i;
-          break;
-        case 180:
-          di = (final->Height - i - 1) * final->Width + (final->Width - j - 1);
-          break;
-        case 270:
-          di = (final->Height - j - 1) * final->Width + i;
-          break;
-        }
-
-        ((unsigned char*)final->Pixels)[di] = *pixel;
+      case 90:
+        di = (width - (k / height) - 1) + (k % height) * width;
+        break;
+      case 180:
+        di = (height - i - 1) * width + (width - j - 1);
+        break;
+      case 270:
+        di = (k / height) + (height - (k % height) - 1) * width;
+        break;
       }
 
-      /* Skip to the end of the line */
-      pixel += orig->Width - (orig->Viewport.X + width);
+      /* Write to destination */
+      if (orig->Depth == PSP_IMAGE_INDEXED) dest[di] = *source;
+      else ((unsigned short*)dest)[di] = *(unsigned short*)source; /* 16 bpp */
     }
-  }
-  else
-  {
-    const unsigned short *pixel;
-    pixel = (unsigned short*)orig->Pixels + (orig->Viewport.Y * orig->Width);
-/*
-FILE *foo=fopen("ms0:/log.txt","a");
-fprintf(foo,"width=%i\theight=%i\n",width, height);
-fclose(foo);
-*/
-		int k;
-    for (i = 0, k = 0; i < height; i++)
-    {
-      /* Skip to the start of the viewport */
-      pixel += orig->Viewport.X;
 
-      for (j = 0; j < width; j++, pixel++, k++)
-      {
-        switch(angle_cw)
-        {
-        case 90:
-          di = (width * (k % height) - (k / height)) + width - 1;
-          break;
-        case 180:
-          di = (height - i - 1) * width + (width - j - 1);
-          break;
-        case 270:
-          di = (width - j - 1) * height + i;
-          break;
-        }
-/*
-FILE *foo=fopen("ms0:/log.txt","a");
-fprintf(foo,"si=%i\tdi=%i\n",si, di);
-fclose(foo);
-*/
-        ((unsigned short*)final->Pixels)[di] = *pixel;
-      }
-
-      /* Skip to the end of the line */
-      pixel += orig->Width - (orig->Viewport.X + width);
-    }
+    /* Skip to the end of the line */
+    source += (orig->Width - (orig->Viewport.X + orig->Viewport.Width)) << l_shift;
   }
 
   if (orig->Depth == PSP_IMAGE_INDEXED)

@@ -658,9 +658,9 @@ int OnSaveStateButtonPress(const PspUiGallery *gallery,
         int angle_cw = 0;
         ULONG rotation = LynxSystem->DisplayGetRotation();
 
-        if (rotation == MIKIE_ROTATE_L) angle_cw = 90;
-        else if (rotation == MIKIE_ROTATE_R) angle_cw = 270;
-        angle_cw = 90;
+        /* Rotate icons for rotated screens */
+        if (rotation == MIKIE_ROTATE_R) angle_cw = 90;
+        else if (rotation == MIKIE_ROTATE_L) angle_cw = 270;
 
         if (!(icon = SaveState(path, Screen, angle_cw)))
         {
