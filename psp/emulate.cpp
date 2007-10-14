@@ -12,6 +12,7 @@
 #include "ctrl.h"
 #include "perf.h"
 #include "image.h"
+#include "util.h"
 
 #include "menu.h"
 #include "emulate.h"
@@ -21,6 +22,27 @@
 
 extern CSystem *LynxSystem;
 extern EmulatorOptions Options;
+extern char *GameName;
+extern char *ScreenshotPath;
+
+/* Button masks */
+const u64 ButtonMask[] = 
+{
+  PSP_CTRL_LTRIGGER | PSP_CTRL_RTRIGGER, 
+  PSP_CTRL_START    | PSP_CTRL_SELECT,
+  PSP_CTRL_ANALUP,    PSP_CTRL_ANALDOWN,
+  PSP_CTRL_ANALLEFT,  PSP_CTRL_ANALRIGHT,
+  PSP_CTRL_UP,        PSP_CTRL_DOWN,
+  PSP_CTRL_LEFT,      PSP_CTRL_RIGHT,
+  PSP_CTRL_SQUARE,    PSP_CTRL_CROSS,
+  PSP_CTRL_CIRCLE,    PSP_CTRL_TRIANGLE,
+  PSP_CTRL_LTRIGGER,  PSP_CTRL_RTRIGGER,
+  PSP_CTRL_SELECT,    PSP_CTRL_START,
+  0 /* End */
+};
+
+/* Game configuration (includes button maps) */
+struct ButtonConfig ActiveConfig;
 
 static int TicksPerUpdate;
 static u32 TicksPerSecond;
@@ -35,6 +57,7 @@ static int ClearScreen;
 static PspFpsCounter Counter;
 PspImage *Screen = NULL;
 
+static inline int ParseInput();
 static UBYTE* DisplayCallback(ULONG objref);
 void AudioCallback(void *buffer, unsigned int *samples, void *userdata);
 
@@ -101,10 +124,61 @@ void TrashEmulation()
 	if (Screen) pspImageDestroy(Screen);
 }
 
+/* Toggle emulated buttons */
+int ParseInput()
+{
+  static SceCtrlData pad;
+  ULONG buttons = LynxSystem->GetButtonData();
+
+  /* Unset the buttons */
+  buttons &= (BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_PAUSE
+    |BUTTON_A|BUTTON_B|BUTTON_OPT1|BUTTON_OPT2) ^ 0xffffffff;
+
+  /* Check the input */
+  if (pspCtrlPollControls(&pad))
+  {
+#ifdef PSP_DEBUG
+    if ((pad.Buttons & (PSP_CTRL_SELECT | PSP_CTRL_START))
+      == (PSP_CTRL_SELECT | PSP_CTRL_START))
+        pspUtilSaveVramSeq(ScreenshotPath, "game");
+#endif
+
+    /* Parse input */
+    int i, on, code;
+    for (i = 0; ButtonMapId[i] >= 0; i++)
+    {
+      code = ActiveConfig.ButtonMap[ButtonMapId[i]];
+      on = (pad.Buttons & ButtonMask[i]) == ButtonMask[i];
+
+      /* Check to see if a button set is pressed. If so, unset it, so it */
+      /* doesn't trigger any other combination presses. */
+      if (on) pad.Buttons &= ~ButtonMask[i];
+
+      if (code & JOY)
+      {
+        if (on) buttons |= CODE_MASK(code);
+      }
+      else if (code & SPC)
+      {
+        switch (CODE_MASK(code))
+        {
+        case SPC_MENU:
+          if (on) return 1;
+          break;
+        }
+      }
+    }
+  }
+
+  LynxSystem->SetButtonData(buttons);
+
+  return 0;
+}
+
 /* Run emulation */
 void RunEmulation()
 {
-  gAudioEnabled = TRUE;
+  gAudioEnabled = Options.SoundEnabled;
 
   switch(Options.Rotation)
   {
@@ -118,7 +192,7 @@ void RunEmulation()
     Screen->Viewport.Height = HANDY_SCREEN_WIDTH;
     break;
   }
-  
+
   LynxSystem->DisplaySetAttributes(Options.Rotation, MIKIE_PIXEL_FORMAT_16BPP_5551,
     Screen->Width * Screen->BytesPerPixel, DisplayCallback, 0);
 
@@ -148,9 +222,6 @@ void RunEmulation()
 
   ClearScreen = 1;
 
-  ULONG buttons;
-	SceCtrlData pad;
-
 	pspPerfInitFps(&Counter);
 
   /* Recompute update frequency */
@@ -177,42 +248,7 @@ if (!foo)
   foo=1;
 }
 
-		buttons = LynxSystem->GetButtonData();
-		
-		if (pspCtrlPollControls(&pad))
-		{
-      if ((pad.Buttons & PSP_CTRL_LTRIGGER) && (pad.Buttons & PSP_CTRL_RTRIGGER))
-        break;
-			
-      if (pad.Buttons & PSP_CTRL_SQUARE) buttons |= BUTTON_B;
-			else buttons &= BUTTON_B ^ 0xffffffff;
-
-			if (pad.Buttons & PSP_CTRL_TRIANGLE) buttons |= BUTTON_A;
-			else buttons &= BUTTON_A ^ 0xffffffff;
-
-			if (pad.Buttons & PSP_CTRL_SELECT) buttons |= BUTTON_OPT1;
-			else buttons &= BUTTON_OPT1 ^ 0xffffffff;
-
-			if (pad.Buttons & PSP_CTRL_START) buttons |= BUTTON_OPT2;
-			else buttons &= BUTTON_OPT2 ^ 0xffffffff;
-
-			buttons &= BUTTON_UP ^ 0xffffffff;
-			buttons &= BUTTON_DOWN ^ 0xffffffff;
-			buttons &= BUTTON_LEFT ^ 0xffffffff;
-			buttons &= BUTTON_RIGHT ^ 0xffffffff;
-
-			if (pad.Buttons & PSP_CTRL_ANALUP)
-				buttons |= BUTTON_UP;
-			else if (pad.Buttons & PSP_CTRL_ANALDOWN)
-				buttons |= BUTTON_DOWN;
-
-			if (pad.Buttons & PSP_CTRL_ANALLEFT)
-				buttons |= BUTTON_LEFT;
-			else if (pad.Buttons & PSP_CTRL_ANALRIGHT)
-				buttons |= BUTTON_RIGHT;
-		}
-
-		LynxSystem->SetButtonData(buttons);
+    ParseInput();
 	}
 
   /* Stop sound */
