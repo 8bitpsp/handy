@@ -25,10 +25,10 @@
 
 #define RES_S_SKIP_FRAMES_0 "No skipping"
 #define RES_S_SKIP_FRAMES_1 "Skip 1 frame"
-#define RES_S_SKIP_FRAMES_2 "Skip 2 frame"
-#define RES_S_SKIP_FRAMES_3 "Skip 3 frame"
-#define RES_S_SKIP_FRAMES_4 "Skip 4 frame"
-#define RES_S_SKIP_FRAMES_5 "Skip 5 frame"
+#define RES_S_SKIP_FRAMES_2 "Skip 2 frames"
+#define RES_S_SKIP_FRAMES_3 "Skip 3 frames"
+#define RES_S_SKIP_FRAMES_4 "Skip 4 frames"
+#define RES_S_SKIP_FRAMES_5 "Skip 5 frames"
 
 #define RES_S_222_MHZ "222 MHz"
 #define RES_S_266_MHZ "266 MHz"

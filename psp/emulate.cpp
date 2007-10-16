@@ -13,6 +13,7 @@
 #include "perf.h"
 #include "image.h"
 #include "util.h"
+#include "fileio.h"
 
 #include "menu.h"
 #include "emulate.h"
@@ -25,8 +26,12 @@ extern EmulatorOptions Options;
 extern char *GameName;
 extern char *ScreenshotPath;
 
+/* Control configuration */
+struct ButtonConfig ActiveConfig;
+PspImage *Screen = NULL;
+
 /* Button masks */
-const u64 ButtonMask[] = 
+static const u64 ButtonMask[] = 
 {
   PSP_CTRL_LTRIGGER | PSP_CTRL_RTRIGGER, 
   PSP_CTRL_START    | PSP_CTRL_SELECT,
@@ -41,25 +46,24 @@ const u64 ButtonMask[] =
   0 /* End */
 };
 
-/* Game configuration (includes button maps) */
-struct ButtonConfig ActiveConfig;
-
-static int TicksPerUpdate;
+static unsigned int TicksPerUpdate;
 static u32 TicksPerSecond;
 static u64 LastTick;
-
 static int ScreenX;
 static int ScreenY;
 static int ScreenW;
 static int ScreenH;
-
+static int VSyncDelay;
 static int ClearScreen;
 static PspFpsCounter Counter;
-PspImage *Screen = NULL;
+static int Frame;
+static int MmTimerHit;
 
 static inline int ParseInput();
 static UBYTE* DisplayCallback(ULONG objref);
-void AudioCallback(void *buffer, unsigned int *samples, void *userdata);
+static void AudioCallback(void *buffer, unsigned int *samples, void *userdata);
+static SceUInt MmTimerHandler(SceUID uid, SceKernelSysClock* req,
+  SceKernelSysClock* act, void* common);
 
 /* Initialize emulation */
 int InitEmulation()
@@ -75,6 +79,10 @@ int InitEmulation()
 
 UBYTE* DisplayCallback(ULONG objref)
 {
+  /* Frame skipping */
+  if (++Frame <= Options.Frameskip) return 0;
+  else Frame = 0;
+
   pspVideoBegin();
 
   /* Clear the buffer first, if necessary */
@@ -128,11 +136,13 @@ void TrashEmulation()
 int ParseInput()
 {
   static SceCtrlData pad;
-  ULONG buttons = LynxSystem->GetButtonData();
+  ULONG temp_buttons, buttons;
+
+  temp_buttons = LynxSystem->GetButtonData();
 
   /* Unset the buttons */
-  buttons &= (BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT|BUTTON_PAUSE
-    |BUTTON_A|BUTTON_B|BUTTON_OPT1|BUTTON_OPT2) ^ 0xffffffff;
+  buttons = temp_buttons &= ~(BUTTON_UP|BUTTON_DOWN|BUTTON_LEFT|BUTTON_RIGHT
+    |BUTTON_PAUSE|BUTTON_A|BUTTON_B|BUTTON_OPT1|BUTTON_OPT2);
 
   /* Check the input */
   if (pspCtrlPollControls(&pad))
@@ -140,7 +150,7 @@ int ParseInput()
 #ifdef PSP_DEBUG
     if ((pad.Buttons & (PSP_CTRL_SELECT | PSP_CTRL_START))
       == (PSP_CTRL_SELECT | PSP_CTRL_START))
-        pspUtilSaveVramSeq(ScreenshotPath, "game");
+        pspUtilSaveVramSeq(ScreenshotPath, pspFileIoGetFilename(GameName));
 #endif
 
     /* Parse input */
@@ -152,11 +162,11 @@ int ParseInput()
 
       /* Check to see if a button set is pressed. If so, unset it, so it */
       /* doesn't trigger any other combination presses. */
-      if (on) pad.Buttons &= ~ButtonMask[i];
+      if (on) pad.Buttons |= ButtonMask[i];
 
       if (code & JOY)
       {
-        if (on) buttons |= CODE_MASK(code);
+        if (on) temp_buttons |= CODE_MASK(code);
       }
       else if (code & SPC)
       {
@@ -168,12 +178,41 @@ int ParseInput()
         }
       }
     }
+
+    /* Flip controls, if rotated */
+    switch (LynxSystem->DisplayGetRotation())
+    {
+    case MIKIE_ROTATE_L:
+      if (temp_buttons & BUTTON_UP) buttons |= BUTTON_LEFT;
+      else if (temp_buttons & BUTTON_DOWN) buttons |= BUTTON_RIGHT;
+      if (temp_buttons & BUTTON_LEFT) buttons |= BUTTON_DOWN;
+      else if (temp_buttons & BUTTON_RIGHT) buttons |= BUTTON_UP;
+      break;
+    case MIKIE_ROTATE_R:
+      if (temp_buttons & BUTTON_UP) buttons |= BUTTON_RIGHT;
+      else if (temp_buttons & BUTTON_DOWN) buttons |= BUTTON_LEFT;
+      if (temp_buttons & BUTTON_LEFT) buttons |= BUTTON_UP;
+      else if (temp_buttons & BUTTON_RIGHT) buttons |= BUTTON_DOWN;
+      break;
+    default:
+      if (temp_buttons & BUTTON_UP) buttons |= BUTTON_UP;
+      else if (temp_buttons & BUTTON_DOWN) buttons |= BUTTON_DOWN;
+      if (temp_buttons & BUTTON_LEFT) buttons |= BUTTON_LEFT;
+      else if (temp_buttons & BUTTON_RIGHT) buttons |= BUTTON_RIGHT;
+      break;
+    }
+
+    /* Set the non-directional controls */
+    buttons |= temp_buttons
+      & (BUTTON_PAUSE|BUTTON_A|BUTTON_B|BUTTON_OPT1|BUTTON_OPT2);
   }
 
   LynxSystem->SetButtonData(buttons);
 
   return 0;
 }
+
+static ULONG previous_buffer_pos = 0;
 
 /* Run emulation */
 void RunEmulation()
@@ -221,47 +260,75 @@ void RunEmulation()
   ScreenY = (SCR_HEIGHT / 2) - (ScreenH / 2);
 
   ClearScreen = 1;
+  Frame = 0;
+  MmTimerHit = 1;
 
 	pspPerfInitFps(&Counter);
 
   /* Recompute update frequency */
-  if (Options.UpdateFreq)
-  {
-    TicksPerSecond = sceRtcGetTickResolution();
-    TicksPerUpdate = TicksPerSecond / Options.UpdateFreq;
-    sceRtcGetCurrentTick(&LastTick);
-  }
+  TicksPerSecond = sceRtcGetTickResolution();
+  sceRtcGetCurrentTick(&LastTick);
+  VSyncDelay = pspVideoGetVSyncFreq() * TicksPerSecond;
+
+  if (Options.UpdateFreq) TicksPerUpdate = TicksPerSecond
+    / (Options.UpdateFreq / (Options.Frameskip + 1));
 
   /* Wait for V. refresh */
   pspVideoWaitVSync();
 
-  /* Resume sound */
-int foo=0;
-//  pspAudioSetChannelCallback(0, AudioCallback, 0);
+  /* Create a timer */
+  SceUID timer_uid = 0;
+  if (Options.SoundEnabled
+    && (timer_uid = sceKernelCreateVTimer("mmtimer", NULL)))
+  {
+    SceKernelSysClock sc;
+    sc.hi = 0;
+    sc.low = 1000000/120;
+
+    sceKernelSetVTimerHandler(timer_uid, &sc, MmTimerHandler, (void*)sc.low);
+    sceKernelStartVTimer(timer_uid);
+    pspAudioSetChannelCallback(0, AudioCallback, 0);
+  }
+
+  /* Main emulation loop */
 	while (!ExitPSP)
 	{
 		for (ULONG loop = 1024; loop; loop--)
 			LynxSystem->Update();
-if (!foo)
-{
-  pspAudioSetChannelCallback(0, AudioCallback, 0);
-  foo=1;
-}
 
-    ParseInput();
+    if (ParseInput()) break;
 	}
 
   /* Stop sound */
-  pspAudioSetChannelCallback(0, NULL, 0);
+  if (timer_uid)
+  {
+    pspAudioSetChannelCallback(0, NULL, 0);
+    sceKernelStopVTimer(timer_uid);
+    sceKernelDeleteVTimer(timer_uid);
+  }
 }
 
-static ULONG previous_buffer_pos = 0;
+SceUInt MmTimerHandler(SceUID uid, SceKernelSysClock* req,
+  SceKernelSysClock* act, void* common)
+{
+  MmTimerHit = 1;
+  return (SceUInt)common;
+}
 
 inline void AudioCallback(void *buffer, unsigned int *length, void *userdata)
 {
-sceKernelDelayThread(1000000/10);
   PspMonoSample *OutBuf = (PspMonoSample*)buffer;
-  int i, play_length, played = 0;
+
+  if (!MmTimerHit)
+  {
+    for (*length = 0; *length < 64; *length++)
+      OutBuf[*length].Channel = 0;
+    return;
+  }
+  MmTimerHit = 0;
+
+  int i;
+  unsigned int play_length, played = 0;
   ULONG current_buffer_pos = gAudioBufferPointer;
   
   if (current_buffer_pos >= previous_buffer_pos)

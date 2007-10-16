@@ -297,8 +297,8 @@ struct ButtonConfig DefaultConfig =
     JOY|BUTTON_DOWN,  /* D-pad Down   */
     JOY|BUTTON_LEFT,  /* D-pad Left   */
     JOY|BUTTON_RIGHT, /* D-pad Right  */
-    JOY|BUTTON_B,     /* Square       */
-    JOY|BUTTON_A,     /* Cross        */
+    JOY|BUTTON_A,     /* Square       */
+    JOY|BUTTON_B,     /* Cross        */
     0,                /* Circle       */
     0,                /* Triangle     */
     0,                /* L Trigger    */
@@ -330,7 +330,7 @@ int InitMenu()
   /* Init NoSaveState icon image */
   NoSaveIcon=pspImageCreate(HANDY_SCREEN_WIDTH, HANDY_SCREEN_HEIGHT,
     PSP_IMAGE_16BPP);
-  pspImageClear(NoSaveIcon, RGB(0x0c,0,0x3f));
+  pspImageClear(NoSaveIcon, RGB(0x85,0x45,0x1a));
 
   /* Initialize paths */
   SaveStatePath 
@@ -379,22 +379,22 @@ int InitMenu()
   UiMetric.ScrollbarWidth = 10;
   UiMetric.TextColor = PSP_COLOR_GRAY;
   UiMetric.SelectedColor = PSP_COLOR_YELLOW;
-  UiMetric.SelectedBgColor = COLOR(0xff,0xff,0xff,0x44);
+  UiMetric.SelectedBgColor = COLOR(0xff,0xff,0xff,0x66);
   UiMetric.StatusBarColor = PSP_COLOR_WHITE;
   UiMetric.BrowserFileColor = PSP_COLOR_GRAY;
   UiMetric.BrowserDirectoryColor = PSP_COLOR_YELLOW;
   UiMetric.GalleryIconsPerRow = 5;
   UiMetric.GalleryIconMarginWidth = 16;
   UiMetric.MenuItemMargin = 20;
-  UiMetric.MenuSelOptionBg = PSP_COLOR_BLACK;
+  UiMetric.MenuSelOptionBg = COLOR(0x85,0x45,0x1a,0xee);
   UiMetric.MenuOptionBoxColor = PSP_COLOR_GRAY;
-  UiMetric.MenuOptionBoxBg = COLOR(0, 0, 33, 0xBB);
+  UiMetric.MenuOptionBoxBg = COLOR(0x85,0x45,0x1a,0xdd);
   UiMetric.MenuDecorColor = PSP_COLOR_YELLOW;
-  UiMetric.DialogFogColor = COLOR(0, 0, 0, 88);
+  UiMetric.DialogFogColor = UiMetric.MenuOptionBoxBg;
   UiMetric.TitlePadding = 4;
   UiMetric.TitleColor = PSP_COLOR_WHITE;
   UiMetric.MenuFps = 30;
-  UiMetric.TabBgColor = COLOR(0x74,0x74,0xbe,0xff);
+  UiMetric.TabBgColor = COLOR(0xf2,0xdc,0xcd,0xff);
 
   return 1;
 }
@@ -423,6 +423,8 @@ void DisplayMenu()
     case TAB_SYSTEM:
       item = pspMenuFindItemById(SystemUiMenu.Menu, SYSTEM_ROTATE);
       pspMenuSelectOptionByValue(item, (void*)Options.Rotation);
+      item = pspMenuFindItemById(SystemUiMenu.Menu, SYSTEM_SOUND);
+      pspMenuSelectOptionByValue(item, (void*)Options.SoundEnabled);
 
       pspUiOpenMenu(&SystemUiMenu, NULL);
       break;
