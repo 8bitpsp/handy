@@ -481,7 +481,12 @@ bool CSystem::ContextSave(FILE *fp)
 {
 	bool status=1;
 
-	if(!fprintf(fp,LSS_VERSION)) status=0;
+#ifdef GZIP_STATE
+#define fwrite(B,L,N,F) gzwrite(F,B,(L)*(N))
+#define fprintf(F,S) gzprintf(F,S)
+#endif
+
+  if(!fprintf(fp,LSS_VERSION)) status=0;
 
 	// Save ROM CRC
 	ULONG checksum=mCart->CRC32();
@@ -522,7 +527,12 @@ bool CSystem::ContextSave(FILE *fp)
 	if(!mSusie->ContextSave(fp)) status=0;
 	if(!mCpu->ContextSave(fp)) status=0;
 
-	return status;
+#ifdef GZIP_STATE
+#undef fwrite
+#undef fprintf
+#endif
+
+  return status;
 }
 
 bool CSystem::ContextLoad(char *context)
@@ -652,12 +662,23 @@ bool CSystem::ContextLoad(FILE *fp)
   bool status;
   UBYTE *filememory=NULL;
   ULONG filesize=0;
-  ULONG initial_pos;
 
-  initial_pos = ftell(fp);
+#ifdef GZIP_STATE
+#define fread(B,L,N,F)  gzread(F,B,(L)*(N))
+  /* Determine size by reading entire compressed stream into a temporary */
+  /*  array */
+  UBYTE scratch[0x20000];
+  int s;
+  while ((s=fread(scratch,1,0x20000,fp))==0x20000) filesize += s;
+  if (s > 0) filesize += s;
+  gzrewind(fp);
+#else
+  ULONG initial_pos=ftell(fp);
   fseek(fp,0,SEEK_END);
   filesize=ftell(fp) - initial_pos;
   fseek(fp,initial_pos,SEEK_SET);
+#endif
+
   filememory=(UBYTE*) new UBYTE[filesize];
 
   if(fread(filememory,sizeof(char),filesize,fp)!=filesize)
@@ -665,6 +686,10 @@ bool CSystem::ContextLoad(FILE *fp)
     delete filememory;
     return 1;
   }
+
+#ifdef GZIP_STATE
+#undef fread
+#endif
 
   status = ContextLoad(filememory, filesize);
   delete filememory;

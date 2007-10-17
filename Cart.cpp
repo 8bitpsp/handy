@@ -295,7 +295,13 @@ void CCart::Reset(void)
 bool CCart::ContextSave(FILE *fp)
 {	
 	TRACE_CART0("ContextSave()");
-	if(!fprintf(fp,"CCart::ContextSave")) return 0;
+
+#ifdef GZIP_STATE
+#define fwrite(B,L,N,F) gzwrite(F,B,(L)*(N))
+#define fprintf(F,S) gzprintf(F,S)
+#endif
+
+  if(!fprintf(fp,"CCart::ContextSave")) return 0;
 	if(!fwrite(&mCounter,sizeof(ULONG),1,fp)) return 0;
 	if(!fwrite(&mShifter,sizeof(ULONG),1,fp)) return 0;
 	if(!fwrite(&mAddrData,sizeof(ULONG),1,fp)) return 0;
@@ -314,7 +320,13 @@ bool CCart::ContextSave(FILE *fp)
 		if(!fwrite(&mMaskBank1,sizeof(ULONG),1,fp)) return 0;
 		if(!fwrite(mCartBank1,sizeof(UBYTE),mMaskBank1+1,fp)) return 0;
 	}
-	return 1;
+
+#ifdef GZIP_STATE
+#undef fwrite
+#undef fprintf
+#endif
+
+  return 1;
 }
 
 bool CCart::ContextLoad(LSS_FILE *fp)

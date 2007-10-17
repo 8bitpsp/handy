@@ -57,6 +57,10 @@
 #include "Mikie.h"
 #include "lynxdef.h"
 
+#ifdef GZIP_STATE
+#include "./zlib-113/zlib.h"
+#endif
+
 
 void CMikie::BlowOut(void)
 {
@@ -354,7 +358,12 @@ bool CMikie::ContextSave(FILE *fp)
 {	
 	TRACE_MIKIE0("ContextSave()");
 
-	if(!fprintf(fp,"CMikie::ContextSave")) return 0;
+#ifdef GZIP_STATE
+#define fwrite(B,L,N,F) gzwrite(F,B,(L)*(N))
+#define fprintf(F,S) gzprintf(F,S)
+#endif
+
+  if(!fprintf(fp,"CMikie::ContextSave")) return 0;
 
 	if(!fwrite(&mDisplayAddress,sizeof(ULONG),1,fp)) return 0;
 	if(!fwrite(&mAudioInputComparator,sizeof(ULONG),1,fp)) return 0;
@@ -551,6 +560,11 @@ bool CMikie::ContextSave(FILE *fp)
 
 	if(!fwrite(&mUART_PARITY_ENABLE,sizeof(ULONG),1,fp)) return 0;
 	if(!fwrite(&mUART_PARITY_EVEN,sizeof(ULONG),1,fp)) return 0;
+
+#ifdef GZIP_STATE
+#undef fwrite
+#undef fprintf
+#endif
 
 	return 1;
 }

@@ -57,13 +57,10 @@ static int VSyncDelay;
 static int ClearScreen;
 static PspFpsCounter Counter;
 static int Frame;
-static int MmTimerHit;
 
 static inline int ParseInput();
 static UBYTE* DisplayCallback(ULONG objref);
 static void AudioCallback(void *buffer, unsigned int *samples, void *userdata);
-static SceUInt MmTimerHandler(SceUID uid, SceKernelSysClock* req,
-  SceKernelSysClock* act, void* common);
 
 /* Initialize emulation */
 int InitEmulation()
@@ -212,13 +209,9 @@ int ParseInput()
   return 0;
 }
 
-static ULONG previous_buffer_pos = 0;
-
 /* Run emulation */
 void RunEmulation()
 {
-  gAudioEnabled = Options.SoundEnabled;
-
   switch(Options.Rotation)
   {
   case MIKIE_NO_ROTATE:
@@ -261,7 +254,6 @@ void RunEmulation()
 
   ClearScreen = 1;
   Frame = 0;
-  MmTimerHit = 1;
 
 	pspPerfInitFps(&Counter);
 
@@ -273,22 +265,11 @@ void RunEmulation()
   if (Options.UpdateFreq) TicksPerUpdate = TicksPerSecond
     / (Options.UpdateFreq / (Options.Frameskip + 1));
 
+  if ((gAudioEnabled = Options.SoundEnabled))
+    pspAudioSetChannelCallback(0, AudioCallback, 0);
+
   /* Wait for V. refresh */
   pspVideoWaitVSync();
-
-  /* Create a timer */
-  SceUID timer_uid = 0;
-  if (Options.SoundEnabled
-    && (timer_uid = sceKernelCreateVTimer("mmtimer", NULL)))
-  {
-    SceKernelSysClock sc;
-    sc.hi = 0;
-    sc.low = 1000000/120;
-
-    sceKernelSetVTimerHandler(timer_uid, &sc, MmTimerHandler, (void*)sc.low);
-    sceKernelStartVTimer(timer_uid);
-    pspAudioSetChannelCallback(0, AudioCallback, 0);
-  }
 
   /* Main emulation loop */
 	while (!ExitPSP)
@@ -300,78 +281,35 @@ void RunEmulation()
 	}
 
   /* Stop sound */
-  if (timer_uid)
-  {
+  if (Options.SoundEnabled)
     pspAudioSetChannelCallback(0, NULL, 0);
-    sceKernelStopVTimer(timer_uid);
-    sceKernelDeleteVTimer(timer_uid);
-  }
 }
 
-SceUInt MmTimerHandler(SceUID uid, SceKernelSysClock* req,
-  SceKernelSysClock* act, void* common)
-{
-  MmTimerHit = 1;
-  return (SceUInt)common;
-}
-
-inline void AudioCallback(void *buffer, unsigned int *length, void *userdata)
+// inline?
+void AudioCallback(void *buffer, unsigned int *length, void *userdata)
 {
   PspMonoSample *OutBuf = (PspMonoSample*)buffer;
-
-  if (!MmTimerHit)
-  {
-    for (*length = 0; *length < 64; *length++)
-      OutBuf[*length].Channel = 0;
-    return;
-  }
-  MmTimerHit = 0;
-
   int i;
-  unsigned int play_length, played = 0;
-  ULONG current_buffer_pos = gAudioBufferPointer;
-  
-  if (current_buffer_pos >= previous_buffer_pos)
+  int len = *length >> 1;
+
+  if(((int)gAudioBufferPointer >= len)
+    && (gAudioBufferPointer != 0) && (!gSystemHalt) )
   {
-    /* Compute length */
-    play_length = current_buffer_pos - previous_buffer_pos;
-    *length = PSP_AUDIO_SAMPLE_TRUNCATE(play_length);
-
-    /* If not enough data, render silence */
-    if (*length < 64)
+    for (i = 0; i < len; i++)
     {
-      for (*length = 0; *length < 64; *length++)
-        OutBuf[*length].Channel = 0;
-      return;
+      short sample = (short)(((int)gAudioBuffer[i] << 8) - 32768);
+      (OutBuf++)->Channel = sample;
+      (OutBuf++)->Channel = sample;
     }
-
-    /* Copy data from audio buffer */
-    for (i = previous_buffer_pos; played < *length; i++, played++)
-      (OutBuf++)->Channel = (short)(((int)gAudioBuffer[i] << 8) - 32768);
+    gAudioBufferPointer = 0;
   }
   else
   {
-    /* Compute length */
-    play_length = (HANDY_AUDIO_BUFFER_SIZE - previous_buffer_pos) + current_buffer_pos;
-    *length = PSP_AUDIO_SAMPLE_TRUNCATE(play_length);
-
-    /* If not enough data, render silence */
-    if (*length < 64)
+    *length = 64;
+    for (i = 0; i < (int)*length; i+=2)
     {
-      for (*length = 0; *length < 64; *length++)
-        OutBuf[*length].Channel = 0;
-      return;
+      (OutBuf++)->Channel = 0;
+      (OutBuf++)->Channel = 0;
     }
-
-    /* Copy data from audio buffer */
-    for (i = previous_buffer_pos; i < HANDY_AUDIO_BUFFER_SIZE; i++, played++)
-      (OutBuf++)->Channel = (short)(((int)gAudioBuffer[i] << 8) - 32768);
-
-    /* Copy data from audio buffer */
-    for (i = 0; played < *length; i++, played++)
-      (OutBuf++)->Channel = (short)(((int)gAudioBuffer[i] << 8) - 32768);
   }
-
-  previous_buffer_pos += played;
-  previous_buffer_pos %= HANDY_AUDIO_BUFFER_SIZE; /* wraparound */
 }

@@ -53,6 +53,10 @@
 #include "System.h"
 #include "Memmap.h"
 
+#ifdef GZIP_STATE
+#include "./zlib-113/zlib.h"
+#endif
+
 
 // IGNORE THIS TEXT, now overridden by new system
 //
@@ -104,12 +108,23 @@ void CMemMap::Reset(void)
 
 bool CMemMap::ContextSave(FILE *fp)
 {	
-	if(!fprintf(fp,"CMemMap::ContextSave")) return 0;
+#ifdef GZIP_STATE
+#define fwrite(B,L,N,F) gzwrite(F,B,(L)*(N))
+#define fprintf(F,S) gzprintf(F,S)
+#endif
+
+  if(!fprintf(fp,"CMemMap::ContextSave")) return 0;
 	if(!fwrite(&mMikieEnabled,sizeof(ULONG),1,fp)) return 0;
 	if(!fwrite(&mSusieEnabled,sizeof(ULONG),1,fp)) return 0;
 	if(!fwrite(&mRomEnabled,sizeof(ULONG),1,fp)) return 0;
 	if(!fwrite(&mVectorsEnabled,sizeof(ULONG),1,fp)) return 0;
-	return 1;
+
+#ifdef GZIP_STATE
+#undef fwrite
+#undef fprintf
+#endif
+
+  return 1;
 }
 
 bool CMemMap::ContextLoad(LSS_FILE *fp)

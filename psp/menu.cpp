@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pspkernel.h>
+#include <zlib.h>
 
 #include "menu.h"
 #include "emulate.h"
@@ -1067,12 +1068,18 @@ int LoadState(const char *path)
 
   /* Load image into temporary object */
   PspImage *image = pspImageLoadPngFd(f);
+  if (!image) return 0;
   pspImageDestroy(image);
 
-  LynxSystem->ContextLoad(f);
+  /* Flush the file stream */
+  fflush(f);
+
+  gzFile z = gzdopen(fileno(f), "r");
+  int status = LynxSystem->ContextLoad((FILE*)z);
+  gzclose(z);
   fclose(f);
 
-  return 1;
+  return status;
 }
 
 /* Save state */
@@ -1095,10 +1102,21 @@ PspImage* SaveState(const char *path, PspImage *icon, int angle_cw)
     return NULL;
   }
 
-  /* Save state */
-  LynxSystem->ContextSave(f);
+  /* Flush the file stream */
+  fflush(f);
 
+  /* Save state */
+  gzFile z = gzdopen(fileno(f), "w");
+  int status = LynxSystem->ContextSave((FILE*)z);
+  if (!status)
+  {
+    pspImageDestroy(rotated);
+    rotated = NULL;
+  }
+
+  gzclose(z);
   fclose(f);
+
   return rotated;
 }
 

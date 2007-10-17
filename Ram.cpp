@@ -54,6 +54,10 @@
 #include "System.h"
 #include "Ram.h"
 
+#ifdef GZIP_STATE
+#include "./zlib-113/zlib.h"
+#endif
+
 CRam::CRam(UBYTE *filememory,ULONG filesize)
 {
 	HOME_HEADER	header;
@@ -130,8 +134,19 @@ void CRam::Reset(void)
 
 bool CRam::ContextSave(FILE *fp)
 {	
-	if(!fprintf(fp,"CRam::ContextSave")) return 0;
+#ifdef GZIP_STATE
+#define fwrite(B,L,N,F) gzwrite(F,B,(L)*(N))
+#define fprintf(F,S) gzprintf(F,S)
+#endif
+
+  if(!fprintf(fp,"CRam::ContextSave")) return 0;
 	if(!fwrite(mRamData,sizeof(UBYTE),RAM_SIZE,fp)) return 0;
+
+#ifdef GZIP_STATE
+#undef fwrite
+#undef fprintf
+#endif
+
 	return 1;
 }
 

@@ -56,6 +56,11 @@
 #include "Susie.h"
 #include "lynxdef.h"
 
+#ifdef GZIP_STATE
+#include "./zlib-113/zlib.h"
+#endif
+
+
 //
 // As the Susie sprite engine only ever sees system RAM
 // wa can access this directly without the hassle of
@@ -177,7 +182,12 @@ bool CSusie::ContextSave(FILE *fp)
 {	
 	TRACE_SUSIE0("ContextSave()");
 
-	if(!fprintf(fp,"CSusie::ContextSave")) return 0;
+#ifdef GZIP_STATE
+#define fwrite(B,L,N,F) gzwrite(F,B,(L)*(N))
+#define fprintf(F,S) gzprintf(F,S)
+#endif
+
+  if(!fprintf(fp,"CSusie::ContextSave")) return 0;
 
 	if(!fwrite(&mTMPADR,sizeof(UUWORD),1,fp)) return 0;
 	if(!fwrite(&mTILTACUM,sizeof(UUWORD),1,fp)) return 0;
@@ -262,7 +272,12 @@ bool CSusie::ContextSave(FILE *fp)
 	if(!fwrite(&mJOYSTICK,sizeof(TJOYSTICK),1,fp)) return 0;
 	if(!fwrite(&mSWITCHES,sizeof(TSWITCHES),1,fp)) return 0;
 
-	return 1;
+#ifdef GZIP_STATE
+#undef fwrite
+#undef fprintf
+#endif
+
+  return 1;
 }
 
 bool CSusie::ContextLoad(LSS_FILE *fp)

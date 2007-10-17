@@ -185,40 +185,8 @@ class C65C02
 			gSystemCPUSleep_Saved=FALSE;
 		}
 
-
-		inline bool ContextSave(FILE *fp)
-		{	
-			TRACE_CPU0("ContextSave()");
-			int mPS;
-			mPS=PS();
-			if(!fprintf(fp,"C6502::ContextSave")) return 0;
-			if(!fwrite(&mA,sizeof(ULONG),1,fp)) return 0;
-			if(!fwrite(&mX,sizeof(ULONG),1,fp)) return 0;
-			if(!fwrite(&mY,sizeof(ULONG),1,fp)) return 0;
-			if(!fwrite(&mSP,sizeof(ULONG),1,fp)) return 0;
-			if(!fwrite(&mPS,sizeof(ULONG),1,fp)) return 0;
-			if(!fwrite(&mPC,sizeof(ULONG),1,fp)) return 0;
-			if(!fwrite(&mIRQActive,sizeof(ULONG),1,fp)) return 0;
-			return 1;
-		}
-
-		inline bool ContextLoad(LSS_FILE *fp)
-		{
-			TRACE_CPU0("ContextLoad()");
-			int mPS;
-			char teststr[100]="XXXXXXXXXXXXXXXXXX";
-			if(!lss_read(teststr,sizeof(char),18,fp)) return 0;
-			if(strcmp(teststr,"C6502::ContextSave")!=0) return 0;
-			if(!lss_read(&mA,sizeof(ULONG),1,fp)) return 0;
-			if(!lss_read(&mX,sizeof(ULONG),1,fp)) return 0;
-			if(!lss_read(&mY,sizeof(ULONG),1,fp)) return 0;
-			if(!lss_read(&mSP,sizeof(ULONG),1,fp)) return 0;
-			if(!lss_read(&mPS,sizeof(ULONG),1,fp)) return 0;
-			if(!lss_read(&mPC,sizeof(ULONG),1,fp)) return 0;
-			if(!lss_read(&mIRQActive,sizeof(ULONG),1,fp)) return 0;
-			PS(mPS);
-			return 1;
-		}
+		bool ContextSave(FILE *fp);
+		bool ContextLoad(LSS_FILE *fp);
 
 		inline void Update(void)
 		{
