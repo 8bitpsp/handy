@@ -32,6 +32,8 @@ ASFLAGS=$(CFLAGS)
 INCDIR=$(PSPLIB) 
 LIBS=-lpng -lm -lc -lz -lpspgu -lpsppower -lpspaudio -lpsprtc -lstdc++
 
+#PSP_FW_VERSION=360
+
 include $(PSPSDK)/lib/build.mak
 
 include $(PSPLIB)/build.mak
